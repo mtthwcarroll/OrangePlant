@@ -1,3 +1,9 @@
+/**
+ * Orange is a class used for testing multithreading with Plant and Worker. Each instance of Orange
+ * has an enumeration that shows its "state" (i.e. fetched, peeled) and a thread can do
+ * "work" on the Orange which delays the thread for an abstract amount of time to
+ * simulate the work and then gets the next "state".
+ */
 public class Orange {
     //Enumeration for state of the orange
     public enum State {

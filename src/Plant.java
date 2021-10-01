@@ -1,12 +1,28 @@
 import java.util.LinkedList;
+import java.util.List;
 
+/**
+ * Plant is used to test multithreading with Orange and Worker. Each plant is its own thread and will create
+ * several Worker threads that will work on Oranges. The goal is to avoid race conditions and
+ * "stale" data while multiple threads are working at the same time on the same data.
+ */
 public class Plant implements Runnable {
-    // How long do we want to run the juice processing
+    //final class vars
     public static final long PROCESSING_TIME = 5 * 1000;
-
     private static final int NUM_PLANTS = 2;
     private static final int NUM_WORKERS = 4;
+    public final int ORANGES_PER_BOTTLE = 3;
 
+    //Class vars
+    public final Thread thread;
+    private int orangesProvided;
+    private int orangesProcessed;
+    private volatile boolean timeToWork;
+    private Worker[] workers;
+    //Linked list for keeping oranges stored.
+    private final List<Orange> orangePile = new LinkedList<Orange>();
+
+    //Main thread
     public static void main(String[] args) {
         // Startup the plants
         Plant[] plants = new Plant[NUM_PLANTS];
@@ -46,6 +62,7 @@ public class Plant implements Runnable {
                 ", wasted " + totalWasted + " oranges");
     }
 
+    //Delay to let plants work
     private static void delay(long time, String errMsg) {
         long sleepTime = Math.max(1, time);
         try {
@@ -55,50 +72,44 @@ public class Plant implements Runnable {
         }
     }
 
-    public final int ORANGES_PER_BOTTLE = 3;
-    private final Thread thread;
-    private int orangesProvided;
-    private int orangesProcessed;
-    private volatile boolean timeToWork;
-    private Worker[] workers;
-
-    //Linked lists for keeping oranges stored.
-    private volatile LinkedList<Orange> fetchedOranges = new LinkedList<Orange>();
-    private volatile LinkedList<Orange> peeledOranges = new LinkedList<Orange>();
-    private volatile LinkedList<Orange> squeezedOranges = new LinkedList<Orange>();
-
+    /**
+     * @param threadNum
+     */
     Plant(int threadNum) {
         orangesProvided = 0;
         orangesProcessed = 0;
         thread = new Thread(this, "Plant[" + threadNum + "]");
         workers = new Worker[NUM_WORKERS];
-
         for(int i = 0; i < NUM_WORKERS; i++) {
-            workers[i] = new Worker(i, thread.getName());
+            workers[i] = new Worker(i, this);
         }
     }
 
-    private synchronized Orange giveOrange(LinkedList<Orange> list, Worker w) {
-        if(!w.checkWorkingOnOrange() && list.size() > 0) {
-            Orange o = w.processOrange(list.removeLast());
-            return o;
+    /**
+     * Method to be called by workers who want an orange. It will either give them the
+     * orange on top of the orangePile or make a new orange to give them. Synch to avoid multithreading issues
+     * @return Orange
+     */
+    public synchronized Orange getOrange() {
+        int size = getPileSize();
+        if(size > 0) {
+            return orangePile.remove(size-1);
         } else {
-            return null;
+            incProvidedOranges();
+            return new Orange();
         }
     }
 
-    private synchronized void addOrange(LinkedList<Orange> list, Orange o) {
-        list.add(o);
-    }
-
+    //Starts the plant thread then the worker threads.
     public void startPlant() {
         timeToWork = true;
+        thread.start();
         for(Worker w:workers) {
             w.startWorking();
         }
-        thread.start();
     }
 
+    //calls the workers stop and then sets the plants working flag to false
     public synchronized void stopPlant() {
         for(Worker w : workers) {
             w.stopWorking();
@@ -106,41 +117,42 @@ public class Plant implements Runnable {
         timeToWork = false;
     }
 
-/*    public void waitToStop() {
+    public void run() {
+        System.out.print(Thread.currentThread().getName() + " Processing oranges");
+        /*
+        Plant constantly produces oranges while running. If the plant can't keep up with the workers,
+        the workers can make their own oranges in getOrange().
+         */
+        while (timeToWork) {
+            addOrange(new Orange());
+            incProvidedOranges();
+        }
+        //Joining workers so that the plant doesn't stop before the workers stop
         try {
-            thread.join();
+            for(Worker w : workers) {
+                w.thread.join();
+            }
         } catch (InterruptedException e) {
             System.err.println(thread.getName() + " stop malfunction");
         }
-    }*/
-
-    public void run() {
-        System.out.print(Thread.currentThread().getName() + " Processing oranges");
-        while (timeToWork) {
-            if(!workers[0].checkWorkingOnOrange()) {
-                Orange o = workers[0].processOrange(new Orange());
-                addOrange(fetchedOranges, o);
-                ++orangesProvided;
-            }
-            Orange o1 = giveOrange(fetchedOranges, workers[1]);
-            if(o1 != null) {
-                addOrange(peeledOranges, o1);
-            }
-            Orange o2 = giveOrange(peeledOranges, workers[2]);
-            if(o2 != null) {
-                addOrange(squeezedOranges, o2);
-            }
-            Orange o3 = giveOrange(squeezedOranges, workers[3]);
-            if(o3 != null) {
-                ++orangesProcessed;
-            }
-        }
-        System.out.println("");
         System.out.println(Thread.currentThread().getName() + " Done");
     }
 
-    private synchronized int getListLength(LinkedList<Orange> list) {
-        return list.size();
+    //Synchronized get and add methods to insure data consistency.
+    public synchronized void addOrange(Orange o) {
+        orangePile.add(o);
+    }
+
+    public synchronized void incProcessedOranges() {
+        orangesProcessed++;
+    }
+
+    public synchronized void incProvidedOranges() {
+        orangesProvided++;
+    }
+
+    private synchronized int getPileSize() {
+        return orangePile.size();
     }
 
     public int getProvidedOranges() {
@@ -156,6 +168,6 @@ public class Plant implements Runnable {
     }
 
     public int getWaste() {
-        return orangesProcessed % ORANGES_PER_BOTTLE;
+        return (orangesProcessed % ORANGES_PER_BOTTLE);
     }
 }

@@ -7,5 +7,7 @@
 /dataSources/
 /dataSources.local.xml
 
-/out/
+src/MattPlant.zip
+out/
 /.idea/
+/dist/
