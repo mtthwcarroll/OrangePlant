@@ -168,6 +168,6 @@ public class Plant implements Runnable {
     }
 
     public int getWaste() {
-        return (orangesProcessed % ORANGES_PER_BOTTLE);
+        return ((orangesProvided - orangesProcessed)+(orangesProcessed%ORANGES_PER_BOTTLE));
     }
 }
